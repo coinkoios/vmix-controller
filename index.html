@@ -321,7 +321,6 @@
             }
 
             promptForConnection() {
-                // Modified for producer setup
                 const savedIp = localStorage.getItem('producerIp') || '192.168.0.12';
                 const savedPort = localStorage.getItem('producerPort') || '8088';
                 
@@ -338,8 +337,19 @@
                     box-shadow: 0 0 20px rgba(0,0,0,0.5);
                 `;
 
+                // Create a direct HTTP link for connection
+                const currentUrl = new URL(window.location.href);
+                const httpUrl = `http://${currentUrl.host}${currentUrl.pathname}${currentUrl.search}`;
+
                 dialog.innerHTML = `
                     <h3 style="margin-bottom: 15px;">Connect to vMix</h3>
+                    <div style="margin-bottom: 15px; padding: 10px; background: #333; border-radius: 4px;">
+                        <p style="color: #ff9999;">HTTPS Connection Issue</p>
+                        <p style="margin-top: 5px;">Click below to switch to HTTP:</p>
+                        <button onclick="window.location.href='${httpUrl}'" style="margin-top: 10px; width: 100%;">
+                            Switch to HTTP Connection
+                        </button>
+                    </div>
                     <div style="margin-bottom: 10px;">
                         <label>IP Address:</label>
                         <input type="text" id="vmix-ip" value="${savedIp}" style="width: 150px; padding: 5px;">
@@ -403,8 +413,13 @@
 
             async connect() {
                 try {
+                    // If we're on HTTPS, show the protocol switch dialog
+                    if (window.location.protocol === 'https:') {
+                        this.promptForConnection(); // This will now show the HTTP switch option
+                        return;
+                    }
+
                     console.log('Attempting to connect to vMix API at:', this.vmixHost);
-                    
                     const response = await fetch(`${this.vmixHost}/api/`, {
                         mode: 'cors',
                         cache: 'no-cache'
