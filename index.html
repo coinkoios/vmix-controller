@@ -172,6 +172,12 @@
     <script>
         class VMixController {
             constructor() {
+                // Force HTTP if needed right at the start
+                if (window.location.protocol === 'https:') {
+                    window.location.href = window.location.href.replace('https:', 'http:');
+                    return;
+                }
+
                 this.roles = {
                     HOST: 'host',
                     GUEST: 'guest',
@@ -398,6 +404,12 @@
 
             async connect() {
                 try {
+                    // If somehow we're still on HTTPS, force HTTP
+                    if (window.location.protocol === 'https:') {
+                        window.location.href = window.location.href.replace('https:', 'http:');
+                        return;
+                    }
+
                     console.log('Attempting to connect to vMix API at:', this.vmixHost);
                     
                     const response = await fetch(`${this.vmixHost}/api/`, {
@@ -437,11 +449,11 @@
                     }
                 } catch (error) {
                     console.error('Error connecting to vMix:', error);
-                    this.statusElement.textContent = 'Connection Failed';
+                    this.statusElement.textContent = 'Connection Failed - Click to Retry';
                     this.statusElement.classList.remove('connected');
                     this.statusElement.classList.add('disconnected');
-                    
-                    setTimeout(() => this.promptForConnection(), 5000);
+                    this.statusElement.style.cursor = 'pointer';
+                    this.statusElement.onclick = () => this.connect();
                 }
             }
 
