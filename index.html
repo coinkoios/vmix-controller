@@ -172,18 +172,13 @@
     <script>
         class VMixController {
             constructor() {
-                // Force HTTP if needed right at the start
-                if (window.location.protocol === 'https:') {
-                    window.location.href = window.location.href.replace('https:', 'http:');
-                    return;
-                }
-
                 this.roles = {
                     HOST: 'host',
                     GUEST: 'guest',
                     PRODUCER: 'producer'
                 };
 
+                // Force HTTP only for API connections, not the main interface
                 this.initializeElements();
                 this.handleUserRole();
                 this.setupRemoteAccess();
@@ -296,29 +291,33 @@
                     this.vmixHost = `http://${producerIp}:${producerPort}`;
                     localStorage.setItem('producerIp', producerIp);
                     localStorage.setItem('producerPort', producerPort);
-                    this.initializeEventListeners();
                     
-                    // If we're on HTTPS, switch to HTTP for the API connection
-                    if (window.location.protocol === 'https:') {
-                        const httpUrl = window.location.href.replace('https:', 'http:');
-                        window.location.href = httpUrl;
+                    // Initialize based on role
+                    if (this.role === this.roles.GUEST) {
+                        this.hideSlideControls();
                     } else {
-                        this.connect();
+                        this.initializeEventListeners();
                     }
+                    
+                    this.connect();
                 } else if (this.role === this.roles.PRODUCER) {
-                    // Only show connection dialog for producers
-                    this.promptForConnection();
+                    // Show connection dialog only once for producer
+                    if (!this.connectionAttempted) {
+                        this.connectionAttempted = true;
+                        this.promptForConnection();
+                    }
                 } else {
-                    // For hosts and guests without producer settings
-                    this.statusElement.textContent = 'Click to enter Producer IP';
-                    this.statusElement.style.cursor = 'pointer';
-                    this.statusElement.onclick = () => this.promptForConnection();
+                    this.statusElement.textContent = 'Waiting for Producer Connection';
                 }
             }
 
             hideSlideControls() {
-                const controlsSection = document.querySelector('.controls-section');
-                controlsSection.style.display = 'none';
+                const slideControls = document.querySelector('.slide-controls');
+                if (slideControls) {
+                    slideControls.style.display = 'none';
+                }
+                // Keep the status and slide info visible
+                this.slideInfo.style.marginTop = '20px';
             }
 
             promptForConnection() {
@@ -404,12 +403,6 @@
 
             async connect() {
                 try {
-                    // If somehow we're still on HTTPS, force HTTP
-                    if (window.location.protocol === 'https:') {
-                        window.location.href = window.location.href.replace('https:', 'http:');
-                        return;
-                    }
-
                     console.log('Attempting to connect to vMix API at:', this.vmixHost);
                     
                     const response = await fetch(`${this.vmixHost}/api/`, {
@@ -422,6 +415,7 @@
                     if (text.includes('<vmix>')) {
                         console.log('Successfully connected to vMix API');
                         this.connected = true;
+                        this.connectionAttempted = true; // Mark as attempted
                         this.statusElement.textContent = 'Connected';
                         this.statusElement.classList.remove('disconnected');
                         this.statusElement.classList.add('connected');
@@ -453,7 +447,7 @@
                     this.statusElement.classList.remove('connected');
                     this.statusElement.classList.add('disconnected');
                     this.statusElement.style.cursor = 'pointer';
-                    this.statusElement.onclick = () => this.connect();
+                    this.statusElement.onclick = () => this.promptForConnection();
                 }
             }
 
@@ -640,16 +634,19 @@
                 // Generate Guest Links
                 linksHtml += '<h4>Guest Links:</h4>';
                 callCodes.guests.forEach(guest => {
-                    // For guests, only create direct vMix Call link
-                    const vmixCallLink = `https://advanced.vmixcall.com/call.htm?Key=${guest.code}&Name=${guest.name}`;
+                    // Create controller link for guests (same interface, different permissions)
+                    const controllerLink = `http://${window.location.host}/vmix-controller?Key=${guest.code}&Name=${guest.name}&Role=guest&ProducerIP=${this.publicIp}&ProducerPort=8088`;
                     
                     linksHtml += `
                         <div style="margin: 10px 0;">
                             <p>${guest.name}:</p>
-                            <input type="text" value="${vmixCallLink}" style="width: 100%; padding: 5px;" readonly>
-                            <button onclick="navigator.clipboard.writeText('${vmixCallLink}').then(() => alert('${guest.name} link copied!'))">
-                                Copy Link
-                            </button>
+                            <div style="margin: 5px 0;">
+                                <p>Click this link to join:</p>
+                                <input type="text" value="${controllerLink}" style="width: 100%; padding: 5px;" readonly>
+                                <button onclick="navigator.clipboard.writeText('${controllerLink}').then(() => alert('${guest.name} link copied!'))">
+                                    Copy Link
+                                </button>
+                            </div>
                         </div>
                     `;
                 });
