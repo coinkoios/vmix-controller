@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src * 'unsafe-inline' 'unsafe-eval'; img-src * data:; frame-src *; connect-src http: https:;">
+    <meta http-equiv="Content-Security-Policy" content="default-src * 'unsafe-inline' 'unsafe-eval'; img-src * data:; frame-src *; connect-src * ws: wss:;">
     <meta http-equiv="Access-Control-Allow-Origin" content="*">
     <meta http-equiv="Access-Control-Allow-Methods" content="GET, POST, OPTIONS">
     <meta http-equiv="Access-Control-Allow-Headers" content="Content-Type">
@@ -179,7 +179,6 @@
                 };
 
                 this.initializeElements();
-                this.handleUserRole();
                 this.setupRemoteAccess();
             }
 
@@ -365,7 +364,10 @@
             async connect() {
                 try {
                     console.log('Attempting to connect to vMix API at:', this.vmixHost);
-                    const response = await fetch(`${this.vmixHost}/api/`, {
+                    
+                    // Use relative protocol to avoid mixed content
+                    const apiUrl = this.vmixHost.replace('http:', '');
+                    const response = await fetch(apiUrl + '/api/', {
                         mode: 'cors',
                         cache: 'no-cache'
                     });
