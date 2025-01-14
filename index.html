@@ -393,43 +393,40 @@
                 try {
                     console.log('Attempting to connect to vMix API at:', this.vmixHost);
                     
-                    // Add error message about HTTPS
+                    // If we're on HTTPS, offer to switch to HTTP
                     if (window.location.protocol === 'https:') {
-                        console.log('Note: If connection fails, you may need to enable mixed content in your browser');
-                        this.statusElement.textContent = 'Click to enable mixed content';
-                        this.statusElement.style.cursor = 'pointer';
-                        this.statusElement.onclick = () => {
-                            const helpDialog = document.createElement('div');
-                            helpDialog.style.cssText = `
-                                position: fixed;
-                                top: 50%;
-                                left: 50%;
-                                transform: translate(-50%, -50%);
-                                background: #2d2d2d;
-                                padding: 20px;
-                                border-radius: 8px;
-                                z-index: 1002;
-                                box-shadow: 0 0 20px rgba(0,0,0,0.5);
-                                max-width: 80%;
-                                width: 600px;
-                            `;
-                            
-                            helpDialog.innerHTML = `
-                                <h3>Enable Mixed Content</h3>
-                                <p>To connect to vMix, you need to:</p>
-                                <ol>
-                                    <li>Click the lock icon in your browser's address bar</li>
-                                    <li>Find "Insecure content" or "Mixed content"</li>
-                                    <li>Change it to "Allow"</li>
-                                    <li>Refresh the page</li>
-                                </ol>
-                                <p>Or use this direct link:</p>
-                                <input type="text" value="http://${window.location.host}${window.location.pathname}${window.location.search}" style="width: 100%; padding: 5px;" readonly>
-                                <button onclick="this.parentElement.remove()">Close</button>
-                            `;
-                            
-                            document.body.appendChild(helpDialog);
-                        };
+                        const httpUrl = window.location.href.replace('https:', 'http:');
+                        
+                        const switchDialog = document.createElement('div');
+                        switchDialog.style.cssText = `
+                            position: fixed;
+                            top: 50%;
+                            left: 50%;
+                            transform: translate(-50%, -50%);
+                            background: #2d2d2d;
+                            padding: 20px;
+                            border-radius: 8px;
+                            z-index: 1002;
+                            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+                            max-width: 80%;
+                            width: 600px;
+                        `;
+                        
+                        switchDialog.innerHTML = `
+                            <h3>Connection Issue</h3>
+                            <p>To connect to vMix, you need to use HTTP instead of HTTPS.</p>
+                            <p>Click the button below to switch:</p>
+                            <button onclick="window.location.href='${httpUrl}'" style="margin: 10px 0; padding: 10px 20px; background: #4a4a4a; border: none; color: white; border-radius: 4px; cursor: pointer;">
+                                Switch to HTTP
+                            </button>
+                            <p style="margin-top: 10px; font-size: 0.9em; color: #999;">
+                                Note: This is safe as we're only connecting to your local vMix instance.
+                            </p>
+                            <button onclick="this.parentElement.remove()" style="margin-top: 10px;">Close</button>
+                        `;
+                        
+                        document.body.appendChild(switchDialog);
+                        return;
                     }
 
                     const response = await fetch(`${this.vmixHost}/api/`, {
@@ -470,8 +467,13 @@
                 } catch (error) {
                     console.error('Error connecting to vMix:', error);
                     if (error.message.includes('blocked') || error.message.includes('Mixed Content')) {
-                        this.statusElement.textContent = 'Mixed Content Blocked - Click for Help';
+                        // Show the switch to HTTP dialog
+                        this.statusElement.textContent = 'Click to switch to HTTP';
                         this.statusElement.style.cursor = 'pointer';
+                        this.statusElement.onclick = () => {
+                            const httpUrl = window.location.href.replace('https:', 'http:');
+                            window.location.href = httpUrl;
+                        };
                     } else {
                         this.statusElement.textContent = 'Connection Failed';
                     }
