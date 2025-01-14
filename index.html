@@ -613,35 +613,20 @@
                     ]
                 };
 
-                // Use the correct vMix Call domain
-                const baseUrl = 'https://advanced.vmixcall.com/vmix-interface-v1.html';
                 let linksHtml = '';
 
                 // Generate Host Links
                 linksHtml += '<h4>Host Links:</h4>';
                 callCodes.hosts.forEach(host => {
-                    // Create direct vMix Call link
                     const vmixCallLink = `https://advanced.vmixcall.com/call.htm?Key=${host.code}&Name=${host.name}`;
-                    // Create controller link
-                    const controllerLink = `${baseUrl}?Key=${host.code}&Name=${host.name}&Role=host&ProducerIP=${this.publicIp}&ProducerPort=8088`;
                     
                     linksHtml += `
                         <div style="margin: 10px 0;">
                             <p>${host.name}:</p>
-                            <div style="margin: 5px 0;">
-                                <p>Direct vMix Call Link:</p>
-                                <input type="text" value="${vmixCallLink}" style="width: 100%; padding: 5px;" readonly>
-                                <button onclick="navigator.clipboard.writeText('${vmixCallLink}').then(() => alert('${host.name} vMix Call link copied!'))">
-                                    Copy vMix Call Link
-                                </button>
-                            </div>
-                            <div style="margin: 5px 0;">
-                                <p>Controller Link:</p>
-                                <input type="text" value="${controllerLink}" style="width: 100%; padding: 5px;" readonly>
-                                <button onclick="navigator.clipboard.writeText('${controllerLink}').then(() => alert('${host.name} controller link copied!'))">
-                                    Copy Controller Link
-                                </button>
-                            </div>
+                            <input type="text" value="${vmixCallLink}" style="width: 100%; padding: 5px;" readonly>
+                            <button onclick="navigator.clipboard.writeText('${vmixCallLink}').then(() => alert('${host.name} link copied!'))">
+                                Copy Link
+                            </button>
                         </div>
                     `;
                 });
@@ -649,36 +634,18 @@
                 // Generate Guest Links
                 linksHtml += '<h4>Guest Links:</h4>';
                 callCodes.guests.forEach(guest => {
-                    // Create controller link for guests (same interface, different permissions)
-                    const controllerLink = `http://${window.location.host}/vmix-controller?Key=${guest.code}&Name=${guest.name}&Role=guest&ProducerIP=${this.publicIp}&ProducerPort=8088`;
+                    const vmixCallLink = `https://advanced.vmixcall.com/call.htm?Key=${guest.code}&Name=${guest.name}`;
                     
                     linksHtml += `
                         <div style="margin: 10px 0;">
                             <p>${guest.name}:</p>
-                            <div style="margin: 5px 0;">
-                                <p>Click this link to join:</p>
-                                <input type="text" value="${controllerLink}" style="width: 100%; padding: 5px;" readonly>
-                                <button onclick="navigator.clipboard.writeText('${controllerLink}').then(() => alert('${guest.name} link copied!'))">
-                                    Copy Link
-                                </button>
-                            </div>
+                            <input type="text" value="${vmixCallLink}" style="width: 100%; padding: 5px;" readonly>
+                            <button onclick="navigator.clipboard.writeText('${vmixCallLink}').then(() => alert('${guest.name} link copied!'))">
+                                Copy Link
+                            </button>
                         </div>
                     `;
                 });
-
-                // Add instructions at the top
-                linksHtml = `
-                    <div style="margin-bottom: 20px; padding: 10px; background: #333; border-radius: 4px;">
-                        <h4>Instructions:</h4>
-                        <p>1. For Hosts: Send them:</p>
-                        <ul>
-                            <li>This HTML file</li>
-                            <li>Their vMix Call code below</li>
-                            <li>Your IP address: ${this.publicIp}</li>
-                        </ul>
-                        <p>2. For Guests: Just send them their vMix Call link</p>
-                    </div>
-                ` + linksHtml;
 
                 return linksHtml;
             }
