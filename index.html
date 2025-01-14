@@ -365,14 +365,33 @@
                 try {
                     console.log('Attempting to connect to vMix API at:', this.vmixHost);
                     
-                    // Use relative protocol to avoid mixed content
-                    const apiUrl = this.vmixHost.replace('http:', '');
-                    const response = await fetch(apiUrl + '/api/', {
-                        mode: 'cors',
-                        cache: 'no-cache'
-                    });
+                    // Create a proxy request or use WebSocket if available
+                    let response;
+                    if (window.location.protocol === 'https:') {
+                        // Try WebSocket connection first
+                        try {
+                            const ws = new WebSocket(this.vmixHost.replace('http:', 'ws:') + '/api/');
+                            response = await new Promise((resolve, reject) => {
+                                ws.onmessage = (event) => resolve(event.data);
+                                ws.onerror = (error) => reject(error);
+                            });
+                        } catch (wsError) {
+                            console.log('WebSocket failed, falling back to HTTP');
+                            // Fall back to direct HTTP request
+                            response = await fetch(this.vmixHost + '/api/', {
+                                mode: 'no-cors', // Try no-cors mode
+                                cache: 'no-cache'
+                            });
+                        }
+                    } else {
+                        // Direct HTTP request if already on HTTP
+                        response = await fetch(this.vmixHost + '/api/', {
+                            mode: 'cors',
+                            cache: 'no-cache'
+                        });
+                    }
                     
-                    const text = await response.text();
+                    const text = typeof response === 'string' ? response : await response.text();
                     
                     if (text.includes('<vmix>')) {
                         console.log('Successfully connected to vMix API');
