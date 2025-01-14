@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src * 'unsafe-inline' 'unsafe-eval'; img-src * data:; frame-src *;">
+    <meta http-equiv="Content-Security-Policy" content="default-src * 'unsafe-inline' 'unsafe-eval'; img-src * data:; frame-src *; connect-src http: https:;">
     <meta http-equiv="Access-Control-Allow-Origin" content="*">
     <meta http-equiv="Access-Control-Allow-Methods" content="GET, POST, OPTIONS">
     <meta http-equiv="Access-Control-Allow-Headers" content="Content-Type">
@@ -280,20 +280,26 @@
                 const userInfo = document.getElementById('user-info');
                 userInfo.textContent = `Connected as: ${this.name} (${this.role})`;
 
-                // Only show vMix connection dialog for producers
-                if (this.role === this.roles.PRODUCER) {
+                // Check for producer IP and port in URL parameters
+                const urlParams = new URLSearchParams(window.location.href.split('?')[1] || '');
+                const producerIp = urlParams.get('ProducerIP') || localStorage.getItem('producerIp');
+                const producerPort = urlParams.get('ProducerPort') || localStorage.getItem('producerPort');
+
+                if (producerIp && producerPort) {
+                    // Use the producer settings from URL
+                    this.vmixHost = `http://${producerIp}:${producerPort}`;
+                    localStorage.setItem('producerIp', producerIp);
+                    localStorage.setItem('producerPort', producerPort);
+                    this.initializeEventListeners();
+                    this.connect();
+                } else if (this.role === this.roles.PRODUCER) {
+                    // Only show connection dialog for producers
                     this.promptForConnection();
-                } else if (this.role === this.roles.GUEST || this.role === this.roles.HOST) {
-                    // For hosts and guests, try to connect using stored producer settings
-                    const producerIp = localStorage.getItem('producerIp');
-                    const producerPort = localStorage.getItem('producerPort');
-                    if (producerIp && producerPort) {
-                        this.vmixHost = `http://${producerIp}:${producerPort}`;
-                        this.initializeEventListeners();
-                        this.connect();
-                    } else {
-                        this.statusElement.textContent = 'Waiting for Producer Settings';
-                    }
+                } else {
+                    // For hosts and guests without producer settings
+                    this.statusElement.textContent = 'Click to enter Producer IP';
+                    this.statusElement.style.cursor = 'pointer';
+                    this.statusElement.onclick = () => this.promptForConnection();
                 }
             }
 
@@ -386,6 +392,46 @@
             async connect() {
                 try {
                     console.log('Attempting to connect to vMix API at:', this.vmixHost);
+                    
+                    // Add error message about HTTPS
+                    if (window.location.protocol === 'https:') {
+                        console.log('Note: If connection fails, you may need to enable mixed content in your browser');
+                        this.statusElement.textContent = 'Click to enable mixed content';
+                        this.statusElement.style.cursor = 'pointer';
+                        this.statusElement.onclick = () => {
+                            const helpDialog = document.createElement('div');
+                            helpDialog.style.cssText = `
+                                position: fixed;
+                                top: 50%;
+                                left: 50%;
+                                transform: translate(-50%, -50%);
+                                background: #2d2d2d;
+                                padding: 20px;
+                                border-radius: 8px;
+                                z-index: 1002;
+                                box-shadow: 0 0 20px rgba(0,0,0,0.5);
+                                max-width: 80%;
+                                width: 600px;
+                            `;
+                            
+                            helpDialog.innerHTML = `
+                                <h3>Enable Mixed Content</h3>
+                                <p>To connect to vMix, you need to:</p>
+                                <ol>
+                                    <li>Click the lock icon in your browser's address bar</li>
+                                    <li>Find "Insecure content" or "Mixed content"</li>
+                                    <li>Change it to "Allow"</li>
+                                    <li>Refresh the page</li>
+                                </ol>
+                                <p>Or use this direct link:</p>
+                                <input type="text" value="http://${window.location.host}${window.location.pathname}${window.location.search}" style="width: 100%; padding: 5px;" readonly>
+                                <button onclick="this.parentElement.remove()">Close</button>
+                            `;
+                            
+                            document.body.appendChild(helpDialog);
+                        };
+                    }
+
                     const response = await fetch(`${this.vmixHost}/api/`, {
                         mode: 'cors',
                         cache: 'no-cache'
@@ -423,12 +469,19 @@
                     }
                 } catch (error) {
                     console.error('Error connecting to vMix:', error);
-                    this.statusElement.textContent = 'Connection Failed';
+                    if (error.message.includes('blocked') || error.message.includes('Mixed Content')) {
+                        this.statusElement.textContent = 'Mixed Content Blocked - Click for Help';
+                        this.statusElement.style.cursor = 'pointer';
+                    } else {
+                        this.statusElement.textContent = 'Connection Failed';
+                    }
                     this.statusElement.classList.remove('connected');
                     this.statusElement.classList.add('disconnected');
                     
-                    // Retry connection after delay
-                    setTimeout(() => this.promptForConnection(), 5000);
+                    // Don't auto-retry if it's a mixed content issue
+                    if (!error.message.includes('Mixed Content')) {
+                        setTimeout(() => this.promptForConnection(), 5000);
+                    }
                 }
             }
 
