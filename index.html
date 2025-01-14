@@ -178,7 +178,6 @@
                     PRODUCER: 'producer'
                 };
 
-                // Force HTTP only for API connections, not the main interface
                 this.initializeElements();
                 this.handleUserRole();
                 this.setupRemoteAccess();
@@ -287,12 +286,10 @@
                 const producerPort = urlParams.get('ProducerPort') || localStorage.getItem('producerPort');
 
                 if (producerIp && producerPort) {
-                    // Use the producer settings from URL
                     this.vmixHost = `http://${producerIp}:${producerPort}`;
                     localStorage.setItem('producerIp', producerIp);
                     localStorage.setItem('producerPort', producerPort);
                     
-                    // Initialize based on role
                     if (this.role === this.roles.GUEST) {
                         this.hideSlideControls();
                     } else {
@@ -301,11 +298,7 @@
                     
                     this.connect();
                 } else if (this.role === this.roles.PRODUCER) {
-                    // Show connection dialog only once for producer
-                    if (!this.connectionAttempted) {
-                        this.connectionAttempted = true;
-                        this.promptForConnection();
-                    }
+                    this.promptForConnection();
                 } else {
                     this.statusElement.textContent = 'Waiting for Producer Connection';
                 }
