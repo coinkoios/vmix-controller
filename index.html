@@ -291,7 +291,14 @@
                     localStorage.setItem('producerIp', producerIp);
                     localStorage.setItem('producerPort', producerPort);
                     this.initializeEventListeners();
-                    this.connect();
+                    
+                    // If we're on HTTPS, switch to HTTP for the API connection
+                    if (window.location.protocol === 'https:') {
+                        const httpUrl = window.location.href.replace('https:', 'http:');
+                        window.location.href = httpUrl;
+                    } else {
+                        this.connect();
+                    }
                 } else if (this.role === this.roles.PRODUCER) {
                     // Only show connection dialog for producers
                     this.promptForConnection();
@@ -393,42 +400,6 @@
                 try {
                     console.log('Attempting to connect to vMix API at:', this.vmixHost);
                     
-                    // If we're on HTTPS, offer to switch to HTTP
-                    if (window.location.protocol === 'https:') {
-                        const httpUrl = window.location.href.replace('https:', 'http:');
-                        
-                        const switchDialog = document.createElement('div');
-                        switchDialog.style.cssText = `
-                            position: fixed;
-                            top: 50%;
-                            left: 50%;
-                            transform: translate(-50%, -50%);
-                            background: #2d2d2d;
-                            padding: 20px;
-                            border-radius: 8px;
-                            z-index: 1002;
-                            box-shadow: 0 0 20px rgba(0,0,0,0.5);
-                            max-width: 80%;
-                            width: 600px;
-                        `;
-                        
-                        switchDialog.innerHTML = `
-                            <h3>Connection Issue</h3>
-                            <p>To connect to vMix, you need to use HTTP instead of HTTPS.</p>
-                            <p>Click the button below to switch:</p>
-                            <button onclick="window.location.href='${httpUrl}'" style="margin: 10px 0; padding: 10px 20px; background: #4a4a4a; border: none; color: white; border-radius: 4px; cursor: pointer;">
-                                Switch to HTTP
-                            </button>
-                            <p style="margin-top: 10px; font-size: 0.9em; color: #999;">
-                                Note: This is safe as we're only connecting to your local vMix instance.
-                            </p>
-                            <button onclick="this.parentElement.remove()" style="margin-top: 10px;">Close</button>
-                        `;
-                        
-                        document.body.appendChild(switchDialog);
-                        return;
-                    }
-
                     const response = await fetch(`${this.vmixHost}/api/`, {
                         mode: 'cors',
                         cache: 'no-cache'
@@ -443,7 +414,7 @@
                         this.statusElement.classList.remove('disconnected');
                         this.statusElement.classList.add('connected');
                         
-                            const parser = new DOMParser();
+                        const parser = new DOMParser();
                         const xmlDoc = parser.parseFromString(text, "text/xml");
                         
                         // Find PowerPoint input
@@ -453,9 +424,9 @@
                             (input.getAttribute('title') || '').toLowerCase().includes('ppt')
                         );
 
-                            if (pptInput) {
-                                this.powerPointInput = pptInput.getAttribute('number');
-                                console.log('Found PowerPoint input:', this.powerPointInput);
+                        if (pptInput) {
+                            this.powerPointInput = pptInput.getAttribute('number');
+                            console.log('Found PowerPoint input:', this.powerPointInput);
                             
                             // Start polling for updates
                             this.startPolling();
@@ -466,24 +437,11 @@
                     }
                 } catch (error) {
                     console.error('Error connecting to vMix:', error);
-                    if (error.message.includes('blocked') || error.message.includes('Mixed Content')) {
-                        // Show the switch to HTTP dialog
-                        this.statusElement.textContent = 'Click to switch to HTTP';
-                        this.statusElement.style.cursor = 'pointer';
-                        this.statusElement.onclick = () => {
-                            const httpUrl = window.location.href.replace('https:', 'http:');
-                            window.location.href = httpUrl;
-                        };
-                    } else {
-                        this.statusElement.textContent = 'Connection Failed';
-                    }
+                    this.statusElement.textContent = 'Connection Failed';
                     this.statusElement.classList.remove('connected');
                     this.statusElement.classList.add('disconnected');
                     
-                    // Don't auto-retry if it's a mixed content issue
-                    if (!error.message.includes('Mixed Content')) {
-                        setTimeout(() => this.promptForConnection(), 5000);
-                    }
+                    setTimeout(() => this.promptForConnection(), 5000);
                 }
             }
 
