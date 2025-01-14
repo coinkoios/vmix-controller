@@ -170,6 +170,10 @@
     </div>
 
     <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('vmix-proxy.js');
+        }
+
         class VMixController {
             constructor() {
                 this.roles = {
@@ -363,61 +367,40 @@
 
             async connect() {
                 try {
-                    // Try HTTPS first, then fall back to HTTP
-                    const protocols = ['https:', 'http:'];
-                    let connected = false;
-                    let error;
+                    console.log('Attempting to connect to vMix API at:', this.vmixHost);
+                    
+                    // Use service worker to proxy the request
+                    const proxyUrl = this.vmixHost.replace('http:', 'vmix-api:');
+                    
+                    const response = await fetch(proxyUrl + '/api/', {
+                        mode: 'cors',
+                        cache: 'no-cache'
+                    });
+                    
+                    const text = await response.text();
+                    
+                    if (text.includes('<vmix>')) {
+                        console.log('Successfully connected to vMix API');
+                        this.connected = true;
+                        this.statusElement.textContent = 'Connected';
+                        this.statusElement.classList.remove('disconnected');
+                        this.statusElement.classList.add('connected');
+                        
+                        const parser = new DOMParser();
+                        const xmlDoc = parser.parseFromString(text, "text/xml");
+                        
+                        // Find PowerPoint input
+                        const inputs = Array.from(xmlDoc.getElementsByTagName('input'));
+                        const pptInput = inputs.find(input => 
+                            input.getAttribute('type') === 'PowerPoint' || 
+                            (input.getAttribute('title') || '').toLowerCase().includes('ppt')
+                        );
 
-                    for (const protocol of protocols) {
-                        try {
-                            const host = this.vmixHost.replace(/^https?:/, protocol);
-                            console.log('Attempting to connect to vMix API at:', host);
-                            
-                            const response = await fetch(`${host}/api/`, {
-                                mode: 'cors',
-                                cache: 'no-cache',
-                                headers: {
-                                    'Access-Control-Allow-Origin': '*'
-                                }
-                            });
-                            
-                            const text = await response.text();
-                            
-                            if (text.includes('<vmix>')) {
-                                console.log('Successfully connected to vMix API');
-                                this.vmixHost = host; // Save the working protocol
-                                this.connected = true;
-                                this.statusElement.textContent = 'Connected';
-                                this.statusElement.classList.remove('disconnected');
-                                this.statusElement.classList.add('connected');
-                                
-                                const parser = new DOMParser();
-                                const xmlDoc = parser.parseFromString(text, "text/xml");
-                                
-                                // Find PowerPoint input
-                                const inputs = Array.from(xmlDoc.getElementsByTagName('input'));
-                                const pptInput = inputs.find(input => 
-                                    input.getAttribute('type') === 'PowerPoint' || 
-                                    (input.getAttribute('title') || '').toLowerCase().includes('ppt')
-                                );
-
-                                if (pptInput) {
-                                    this.powerPointInput = pptInput.getAttribute('number');
-                                    console.log('Found PowerPoint input:', this.powerPointInput);
-                                    this.startPolling();
-                                }
-                                
-                                connected = true;
-                                break;
-                            }
-                        } catch (e) {
-                            error = e;
-                            console.log(`Failed to connect using ${protocol}, trying next protocol...`);
+                        if (pptInput) {
+                            this.powerPointInput = pptInput.getAttribute('number');
+                            console.log('Found PowerPoint input:', this.powerPointInput);
+                            this.startPolling();
                         }
-                    }
-
-                    if (!connected) {
-                        throw error || new Error('Failed to connect to vMix API');
                     }
                 } catch (error) {
                     console.error('Error connecting to vMix:', error);
@@ -478,7 +461,10 @@
             async nextSlide() {
                 if (!this.powerPointInput) return;
                 try {
-                    const response = await fetch(`${this.vmixHost}/api/?Function=NextItem&Input=${this.powerPointInput}`, {
+                    const proxyUrl = 'https://api.allorigins.win/raw?url=' + 
+                        encodeURIComponent(`${this.vmixHost}/api/?Function=NextItem&Input=${this.powerPointInput}`);
+                        
+                    const response = await fetch(proxyUrl, {
                         mode: 'cors',
                         cache: 'no-cache'
                     });
@@ -486,7 +472,6 @@
                     if (!text.includes('OK')) {
                         throw new Error('API response not OK');
                     }
-                    // Update slide info immediately after changing slides
                     await this.updateSlideInfo();
                 } catch (error) {
                     console.error('Error advancing slide:', error);
@@ -496,7 +481,10 @@
             async previousSlide() {
                 if (!this.powerPointInput) return;
                 try {
-                    const response = await fetch(`${this.vmixHost}/api/?Function=PreviousItem&Input=${this.powerPointInput}`, {
+                    const proxyUrl = 'https://api.allorigins.win/raw?url=' + 
+                        encodeURIComponent(`${this.vmixHost}/api/?Function=PreviousItem&Input=${this.powerPointInput}`);
+                        
+                    const response = await fetch(proxyUrl, {
                         mode: 'cors',
                         cache: 'no-cache'
                     });
@@ -504,7 +492,6 @@
                     if (!text.includes('OK')) {
                         throw new Error('API response not OK');
                     }
-                    // Update slide info immediately after changing slides
                     await this.updateSlideInfo();
                 } catch (error) {
                     console.error('Error going back one slide:', error);
