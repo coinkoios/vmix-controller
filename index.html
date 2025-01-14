@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src * 'unsafe-inline' 'unsafe-eval'; img-src * data:; frame-src *; connect-src http: https: ws: wss:;">
+    <meta http-equiv="Content-Security-Policy" content="default-src * 'unsafe-inline' 'unsafe-eval'; img-src * data:; frame-src *; connect-src http: https:;">
     <meta http-equiv="Access-Control-Allow-Origin" content="*">
     <meta http-equiv="Access-Control-Allow-Methods" content="GET, POST, OPTIONS">
     <meta http-equiv="Access-Control-Allow-Headers" content="Content-Type">
@@ -179,6 +179,7 @@
                 };
 
                 this.initializeElements();
+                this.handleUserRole();
                 this.setupRemoteAccess();
             }
 
@@ -285,34 +286,30 @@
                 const producerPort = urlParams.get('ProducerPort') || localStorage.getItem('producerPort');
 
                 if (producerIp && producerPort) {
+                    // Use the producer settings from URL
                     this.vmixHost = `http://${producerIp}:${producerPort}`;
                     localStorage.setItem('producerIp', producerIp);
                     localStorage.setItem('producerPort', producerPort);
-                    
-                    if (this.role === this.roles.GUEST) {
-                        this.hideSlideControls();
-                    } else {
-                        this.initializeEventListeners();
-                    }
-                    
+                    this.initializeEventListeners();
                     this.connect();
                 } else if (this.role === this.roles.PRODUCER) {
+                    // Only show connection dialog for producers
                     this.promptForConnection();
                 } else {
-                    this.statusElement.textContent = 'Waiting for Producer Connection';
+                    // For hosts and guests without producer settings
+                    this.statusElement.textContent = 'Click to enter Producer IP';
+                    this.statusElement.style.cursor = 'pointer';
+                    this.statusElement.onclick = () => this.promptForConnection();
                 }
             }
 
             hideSlideControls() {
-                const slideControls = document.querySelector('.slide-controls');
-                if (slideControls) {
-                    slideControls.style.display = 'none';
-                }
-                // Keep the status and slide info visible
-                this.slideInfo.style.marginTop = '20px';
+                const controlsSection = document.querySelector('.controls-section');
+                controlsSection.style.display = 'none';
             }
 
             promptForConnection() {
+                // Modified for producer setup
                 const savedIp = localStorage.getItem('producerIp') || '192.168.0.12';
                 const savedPort = localStorage.getItem('producerPort') || '8088';
                 
@@ -351,8 +348,39 @@
                     const port = document.getElementById('vmix-port').value;
 
                     if (ip && port) {
+                        // Save as producer settings
                         localStorage.setItem('producerIp', ip);
                         localStorage.setItem('producerPort', port);
+                        
+                        // Create a shareable link for hosts/guests
+                        const baseUrl = window.location.origin + window.location.pathname;
+                        const shareableLink = `${baseUrl}?Key=${this.callKey}&ProducerIP=${ip}&ProducerPort=${port}`;
+                        
+                        // Show shareable link to producer
+                        const shareDialog = document.createElement('div');
+                        shareDialog.style.cssText = `
+                            position: fixed;
+                            top: 50%;
+                            left: 50%;
+                            transform: translate(-50%, -50%);
+                            background: #2d2d2d;
+                            padding: 20px;
+                            border-radius: 8px;
+                            z-index: 1001;
+                            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+                        `;
+                        
+                        shareDialog.innerHTML = `
+                            <h3>Share this link with hosts and guests:</h3>
+                            <input type="text" value="${shareableLink}" style="width: 100%; padding: 5px; margin: 10px 0;" readonly>
+                            <button onclick="navigator.clipboard.writeText('${shareableLink}').then(() => alert('Link copied!'))">
+                                Copy Link
+                            </button>
+                            <button onclick="this.parentElement.remove()">Close</button>
+                        `;
+                        
+                        document.body.appendChild(shareDialog);
+
                         this.vmixHost = `http://${ip}:${port}`;
                         document.body.removeChild(dialog);
                         this.initializeEventListeners();
@@ -365,15 +393,48 @@
                 try {
                     console.log('Attempting to connect to vMix API at:', this.vmixHost);
                     
-                    // Force HTTP for API connections
-                    const apiUrl = this.vmixHost.replace('https:', 'http:');
-                    
-                    const response = await fetch(apiUrl + '/api/', {
+                    // Add error message about HTTPS
+                    if (window.location.protocol === 'https:') {
+                        console.log('Note: If connection fails, you may need to enable mixed content in your browser');
+                        this.statusElement.textContent = 'Click to enable mixed content';
+                        this.statusElement.style.cursor = 'pointer';
+                        this.statusElement.onclick = () => {
+                            const helpDialog = document.createElement('div');
+                            helpDialog.style.cssText = `
+                                position: fixed;
+                                top: 50%;
+                                left: 50%;
+                                transform: translate(-50%, -50%);
+                                background: #2d2d2d;
+                                padding: 20px;
+                                border-radius: 8px;
+                                z-index: 1002;
+                                box-shadow: 0 0 20px rgba(0,0,0,0.5);
+                                max-width: 80%;
+                                width: 600px;
+                            `;
+                            
+                            helpDialog.innerHTML = `
+                                <h3>Enable Mixed Content</h3>
+                                <p>To connect to vMix, you need to:</p>
+                                <ol>
+                                    <li>Click the lock icon in your browser's address bar</li>
+                                    <li>Find "Insecure content" or "Mixed content"</li>
+                                    <li>Change it to "Allow"</li>
+                                    <li>Refresh the page</li>
+                                </ol>
+                                <p>Or use this direct link:</p>
+                                <input type="text" value="http://${window.location.host}${window.location.pathname}${window.location.search}" style="width: 100%; padding: 5px;" readonly>
+                                <button onclick="this.parentElement.remove()">Close</button>
+                            `;
+                            
+                            document.body.appendChild(helpDialog);
+                        };
+                    }
+
+                    const response = await fetch(`${this.vmixHost}/api/`, {
                         mode: 'cors',
-                        cache: 'no-cache',
-                        headers: {
-                            'Access-Control-Allow-Origin': '*'
-                        }
+                        cache: 'no-cache'
                     });
                     
                     const text = await response.text();
@@ -385,7 +446,7 @@
                         this.statusElement.classList.remove('disconnected');
                         this.statusElement.classList.add('connected');
                         
-                        const parser = new DOMParser();
+                            const parser = new DOMParser();
                         const xmlDoc = parser.parseFromString(text, "text/xml");
                         
                         // Find PowerPoint input
@@ -395,19 +456,32 @@
                             (input.getAttribute('title') || '').toLowerCase().includes('ppt')
                         );
 
-                        if (pptInput) {
-                            this.powerPointInput = pptInput.getAttribute('number');
-                            console.log('Found PowerPoint input:', this.powerPointInput);
+                            if (pptInput) {
+                                this.powerPointInput = pptInput.getAttribute('number');
+                                console.log('Found PowerPoint input:', this.powerPointInput);
+                            
+                            // Start polling for updates
                             this.startPolling();
+                        } else {
+                            console.error('No PowerPoint input found');
+                            this.statusElement.textContent = 'No PowerPoint Found';
                         }
                     }
                 } catch (error) {
                     console.error('Error connecting to vMix:', error);
-                    this.statusElement.textContent = 'Connection Failed - Click to Retry';
+                    if (error.message.includes('blocked') || error.message.includes('Mixed Content')) {
+                        this.statusElement.textContent = 'Mixed Content Blocked - Click for Help';
+                        this.statusElement.style.cursor = 'pointer';
+                    } else {
+                        this.statusElement.textContent = 'Connection Failed';
+                    }
                     this.statusElement.classList.remove('connected');
                     this.statusElement.classList.add('disconnected');
-                    this.statusElement.style.cursor = 'pointer';
-                    this.statusElement.onclick = () => this.promptForConnection();
+                    
+                    // Don't auto-retry if it's a mixed content issue
+                    if (!error.message.includes('Mixed Content')) {
+                        setTimeout(() => this.promptForConnection(), 5000);
+                    }
                 }
             }
 
@@ -558,20 +632,35 @@
                     ]
                 };
 
+                // Use the correct vMix Call domain
+                const baseUrl = 'https://advanced.vmixcall.com/vmix-interface-v1.html';
                 let linksHtml = '';
 
                 // Generate Host Links
                 linksHtml += '<h4>Host Links:</h4>';
                 callCodes.hosts.forEach(host => {
+                    // Create direct vMix Call link
                     const vmixCallLink = `https://advanced.vmixcall.com/call.htm?Key=${host.code}&Name=${host.name}`;
+                    // Create controller link
+                    const controllerLink = `${baseUrl}?Key=${host.code}&Name=${host.name}&Role=host&ProducerIP=${this.publicIp}&ProducerPort=8088`;
                     
                     linksHtml += `
                         <div style="margin: 10px 0;">
                             <p>${host.name}:</p>
-                            <input type="text" value="${vmixCallLink}" style="width: 100%; padding: 5px;" readonly>
-                            <button onclick="navigator.clipboard.writeText('${vmixCallLink}').then(() => alert('${host.name} link copied!'))">
-                                Copy Link
-                            </button>
+                            <div style="margin: 5px 0;">
+                                <p>Direct vMix Call Link:</p>
+                                <input type="text" value="${vmixCallLink}" style="width: 100%; padding: 5px;" readonly>
+                                <button onclick="navigator.clipboard.writeText('${vmixCallLink}').then(() => alert('${host.name} vMix Call link copied!'))">
+                                    Copy vMix Call Link
+                                </button>
+                            </div>
+                            <div style="margin: 5px 0;">
+                                <p>Controller Link:</p>
+                                <input type="text" value="${controllerLink}" style="width: 100%; padding: 5px;" readonly>
+                                <button onclick="navigator.clipboard.writeText('${controllerLink}').then(() => alert('${host.name} controller link copied!'))">
+                                    Copy Controller Link
+                                </button>
+                            </div>
                         </div>
                     `;
                 });
@@ -579,6 +668,7 @@
                 // Generate Guest Links
                 linksHtml += '<h4>Guest Links:</h4>';
                 callCodes.guests.forEach(guest => {
+                    // For guests, only create direct vMix Call link
                     const vmixCallLink = `https://advanced.vmixcall.com/call.htm?Key=${guest.code}&Name=${guest.name}`;
                     
                     linksHtml += `
@@ -592,9 +682,20 @@
                     `;
                 });
 
-                // Use GitHub Pages URL for controller links
-                const baseUrl = 'https://coinkoios.github.io/vmix-controller';
-                
+                // Add instructions at the top
+                linksHtml = `
+                    <div style="margin-bottom: 20px; padding: 10px; background: #333; border-radius: 4px;">
+                        <h4>Instructions:</h4>
+                        <p>1. For Hosts: Send them:</p>
+                        <ul>
+                            <li>This HTML file</li>
+                            <li>Their vMix Call code below</li>
+                            <li>Your IP address: ${this.publicIp}</li>
+                        </ul>
+                        <p>2. For Guests: Just send them their vMix Call link</p>
+                    </div>
+                ` + linksHtml;
+
                 return linksHtml;
             }
         }
