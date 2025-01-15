@@ -1,0 +1,2 @@
+# In your repository root (same level as index.html)
+echo "vmix.controller.com" > CNAME
