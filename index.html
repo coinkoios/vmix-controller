@@ -80,6 +80,10 @@
     </div>
 
     <script>
+        if (window.location.protocol === 'https:' && !window.location.host.includes('github.io')) {
+            window.location.href = window.location.href.replace('https:', 'http:');
+        }
+
         class VMixController {
             constructor() {
                 // Parse URL parameters
@@ -161,25 +165,38 @@
                     text-align: center;
                 `;
 
-                const insecureUrl = window.location.href.replace('https:', 'http:');
+                // Create HTTP version of current URL
+                const currentUrl = new URL(window.location.href);
+                currentUrl.protocol = 'http:';
                 
                 warningDiv.innerHTML = `
                     <h3 style="color: #ff9999;">Security Notice</h3>
-                    <p>This page is loaded over HTTPS but needs to connect to vMix over an insecure connection.</p>
-                    <p>Please use this link instead:</p>
-                    <input type="text" value="${insecureUrl}" style="width: 100%; margin: 10px 0; padding: 5px;" readonly>
-                    <button onclick="window.location.href='${insecureUrl}'">Switch to HTTP</button>
-                    <button onclick="this.parentElement.remove()">Close</button>
+                    <p>vMix requires an insecure (HTTP) connection for WebSocket communication.</p>
+                    <p>Please click below to switch to HTTP:</p>
+                    <button onclick="window.location.href='${currentUrl.toString()}'">
+                        Switch to HTTP Version
+                    </button>
+                    <button onclick="this.parentElement.remove()" style="margin-left: 10px;">
+                        Close
+                    </button>
                 `;
 
                 document.body.appendChild(warningDiv);
             }
 
             connectWebSocket() {
-                const wsUrl = `${this.wsProtocol}${this.producerIP}:8088/`;
+                // Force HTTP for WebSocket connection
+                const wsUrl = `ws://${this.producerIP}:8088/`;
                 console.log('Connecting to WebSocket:', wsUrl);
                 
                 try {
+                    // Check if we're on HTTPS
+                    if (window.location.protocol === 'https:') {
+                        // Show warning and provide HTTP link
+                        this.showSecurityWarning();
+                        return;
+                    }
+
                     this.ws = new WebSocket(wsUrl);
                     
                     this.ws.onopen = () => {
@@ -202,9 +219,8 @@
                     };
                 } catch (error) {
                     console.error('WebSocket connection error:', error);
-                    this.elements.status.textContent = 'Connection Failed - Security Error';
+                    this.elements.status.textContent = 'Connection Failed';
                     this.elements.status.classList.replace('connected', 'disconnected');
-                    this.showSecurityWarning();
                 }
             }
 
