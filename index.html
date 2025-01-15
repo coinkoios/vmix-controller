@@ -185,16 +185,45 @@
             }
 
             connectWebSocket() {
-                // Force HTTP for WebSocket connection
-                const wsUrl = `ws://${this.producerIP}:8088/`;
+                const isLocal = this.producerIP.includes('192.168.') || this.producerIP === 'localhost';
+                const wsUrl = isLocal ? 
+                    `ws://${this.producerIP}:8088/` : 
+                    `ws://${this.producerIP}:8088/`;
+                
                 console.log('Connecting to WebSocket:', wsUrl);
                 
                 try {
                     // Check if we're on HTTPS
                     if (window.location.protocol === 'https:') {
-                        // Show warning and provide HTTP link
-                        this.showSecurityWarning();
-                        return;
+                        // Instead of redirecting, show a dialog explaining the limitations
+                        const notice = document.createElement('div');
+                        notice.style.cssText = `
+                            position: fixed;
+                            top: 50%;
+                            left: 50%;
+                            transform: translate(-50%, -50%);
+                            background: #2d2d2d;
+                            padding: 20px;
+                            border-radius: 8px;
+                            z-index: 1000;
+                            max-width: 600px;
+                            text-align: center;
+                        `;
+                        
+                        notice.innerHTML = `
+                            <h3 style="color: #ff9999;">Important Notice</h3>
+                            <p>Due to browser security restrictions, this page can only be used for vMix Call.</p>
+                            <p>Slide controls are not available when accessed via HTTPS.</p>
+                            <p>To use slide controls, download and run this page locally.</p>
+                            <button onclick="this.parentElement.remove()">Understood</button>
+                        `;
+                        
+                        document.body.appendChild(notice);
+                        
+                        // Disable WebSocket connection attempts
+                        VMixController.prototype.connectWebSocket = function() {
+                            this.elements.status.textContent = 'WebSocket Disabled (HTTPS)';
+                        };
                     }
 
                     this.ws = new WebSocket(wsUrl);
