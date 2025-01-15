@@ -105,6 +105,11 @@
                     nextSlide: document.getElementById('next-slide')
                 };
 
+                // Add secure connection options
+                this.useSecureConnection = window.location.protocol === 'https:';
+                this.wsProtocol = this.useSecureConnection ? 'wss://' : 'ws://';
+                this.httpProtocol = this.useSecureConnection ? 'https://' : 'http://';
+
                 // Initialize
                 this.init();
             }
@@ -119,7 +124,7 @@
                 // Setup vMix Call
                 if (this.callKey) {
                     const iframe = document.createElement('iframe');
-                    iframe.src = `https://www.vmix.com/call.htm?Key=${this.callKey}&Name=${this.name}`;
+                    iframe.src = `https://advanced.vmixcall.com/call.htm?Key=${this.callKey}&Name=${this.name}`;
                     iframe.allow = 'camera;microphone;fullscreen';
                     iframe.style.width = '100%';
                     iframe.style.height = '100%';
@@ -127,9 +132,13 @@
                     this.elements.vmixCall.appendChild(iframe);
                 }
 
-                // Setup WebSocket connection
+                // Setup WebSocket connection with security warning
                 if (this.producerIP) {
-                    this.connectWebSocket();
+                    if (this.useSecureConnection) {
+                        this.showSecurityWarning();
+                    } else {
+                        this.connectWebSocket();
+                    }
                 }
 
                 // Add event listeners
@@ -137,28 +146,66 @@
                 this.elements.nextSlide.addEventListener('click', () => this.sendCommand('NextItem'));
             }
 
+            showSecurityWarning() {
+                const warningDiv = document.createElement('div');
+                warningDiv.style.cssText = `
+                    position: fixed;
+                    top: 50%;
+                    left: 50%;
+                    transform: translate(-50%, -50%);
+                    background: #2d2d2d;
+                    padding: 20px;
+                    border-radius: 8px;
+                    z-index: 1000;
+                    max-width: 500px;
+                    text-align: center;
+                `;
+
+                const insecureUrl = window.location.href.replace('https:', 'http:');
+                
+                warningDiv.innerHTML = `
+                    <h3 style="color: #ff9999;">Security Notice</h3>
+                    <p>This page is loaded over HTTPS but needs to connect to vMix over an insecure connection.</p>
+                    <p>Please use this link instead:</p>
+                    <input type="text" value="${insecureUrl}" style="width: 100%; margin: 10px 0; padding: 5px;" readonly>
+                    <button onclick="window.location.href='${insecureUrl}'">Switch to HTTP</button>
+                    <button onclick="this.parentElement.remove()">Close</button>
+                `;
+
+                document.body.appendChild(warningDiv);
+            }
+
             connectWebSocket() {
-                const wsUrl = `ws://${this.producerIP}:8088/`;
-                this.ws = new WebSocket(wsUrl);
+                const wsUrl = `${this.wsProtocol}${this.producerIP}:8088/`;
+                console.log('Connecting to WebSocket:', wsUrl);
+                
+                try {
+                    this.ws = new WebSocket(wsUrl);
+                    
+                    this.ws.onopen = () => {
+                        this.connected = true;
+                        this.elements.status.textContent = 'Connected';
+                        this.elements.status.classList.replace('disconnected', 'connected');
+                        this.getPowerPointInput();
+                    };
 
-                this.ws.onopen = () => {
-                    this.connected = true;
-                    this.elements.status.textContent = 'Connected';
-                    this.elements.status.classList.replace('disconnected', 'connected');
-                    this.getPowerPointInput();
-                };
+                    this.ws.onclose = () => {
+                        this.connected = false;
+                        this.elements.status.textContent = 'Disconnected';
+                        this.elements.status.classList.replace('connected', 'disconnected');
+                        // Try to reconnect after 5 seconds
+                        setTimeout(() => this.connectWebSocket(), 5000);
+                    };
 
-                this.ws.onclose = () => {
-                    this.connected = false;
-                    this.elements.status.textContent = 'Disconnected';
+                    this.ws.onmessage = (event) => {
+                        this.handleVMixUpdate(event.data);
+                    };
+                } catch (error) {
+                    console.error('WebSocket connection error:', error);
+                    this.elements.status.textContent = 'Connection Failed - Security Error';
                     this.elements.status.classList.replace('connected', 'disconnected');
-                    // Try to reconnect after 5 seconds
-                    setTimeout(() => this.connectWebSocket(), 5000);
-                };
-
-                this.ws.onmessage = (event) => {
-                    this.handleVMixUpdate(event.data);
-                };
+                    this.showSecurityWarning();
+                }
             }
 
             sendCommand(command) {
