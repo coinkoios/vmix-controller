@@ -237,6 +237,10 @@
                     // Fall back to manual setup dialog
                     this.handleUserRole();
                 }
+
+                // Add WebSocket support
+                this.ws = null;
+                this.wsReconnectInterval = null;
             }
 
             initializeElements() {
@@ -436,25 +440,40 @@
                 try {
                     console.log('Attempting to connect to vMix API at:', this.vmixHost);
                     
-                    // Use a CORS proxy for GitHub Pages
-                    const proxyUrl = 'https://cors-anywhere.herokuapp.com/';
-                    const vmixUrl = `${this.vmixHost}/api/`;
+                    // Convert HTTP URL to WebSocket URL
+                    const wsHost = this.vmixHost.replace('http://', 'ws://');
+                    this.ws = new WebSocket(wsHost);
                     
-                    const response = await fetch(proxyUrl + vmixUrl, {
-                        headers: {
-                            'Origin': window.location.origin,
-                            'X-Requested-With': 'XMLHttpRequest'
-                        }
-                    });
-
-                    if (response.ok) {
+                    this.ws.onopen = () => {
+                        console.log('WebSocket connected');
                         this.statusElement.textContent = 'Connected';
                         this.statusElement.style.backgroundColor = '#4CAF50';
                         this.connected = true;
-                        
-                        // Start polling for PowerPoint updates
                         this.startPolling();
-                    }
+                    };
+                    
+                    this.ws.onclose = () => {
+                        console.log('WebSocket disconnected');
+                        this.statusElement.textContent = 'Disconnected';
+                        this.statusElement.style.backgroundColor = '#f44336';
+                        this.connected = false;
+                        
+                        // Try to reconnect
+                        if (!this.wsReconnectInterval) {
+                            this.wsReconnectInterval = setInterval(() => {
+                                if (!this.connected) this.connect();
+                            }, 5000);
+                        }
+                    };
+                    
+                    this.ws.onerror = (error) => {
+                        console.error('WebSocket error:', error);
+                    };
+                    
+                    this.ws.onmessage = (event) => {
+                        this.handleVMixUpdate(event.data);
+                    };
+
                 } catch (error) {
                     console.error('Error connecting to vMix:', error);
                     this.statusElement.textContent = 'Connection Failed';
@@ -462,92 +481,58 @@
                 }
             }
 
-            startPolling() {
-                // Poll every second for updates
-                this.pollInterval = setInterval(() => {
-                    this.updateSlideInfo();
-                }, 1000);
-            }
+            handleVMixUpdate(data) {
+                const parser = new DOMParser();
+                const xmlDoc = parser.parseFromString(data, "text/xml");
+                
+                // Update slide info
+                const input = xmlDoc.querySelector(`input[number="${this.powerPointInput}"]`);
+                if (input) {
+                    const title = input.getAttribute('title') || '';
+                    const slideMatch = title.match(/Slide\s*(\d+)/i);
+                    const powerPointInput = xmlDoc.querySelector('input[type="PowerPoint"]');
+                    const totalSlides = powerPointInput ? '10' : '0';
 
-            initializeEventListeners() {
-                this.prevButton.addEventListener('click', () => this.previousSlide());
-                this.nextButton.addEventListener('click', () => this.nextSlide());
-            }
-
-            async updateSlideInfo() {
-                try {
-                    const proxyUrl = 'https://cors-anywhere.herokuapp.com/';
-                    const response = await fetch(proxyUrl + `${this.vmixHost}/api/`, {
-                        headers: {
-                            'Origin': window.location.origin,
-                            'X-Requested-With': 'XMLHttpRequest'
-                        }
-                    });
-                    
-                    const text = await response.text();
-                    const parser = new DOMParser();
-                    const xmlDoc = parser.parseFromString(text, "text/xml");
-                    
-                    const input = xmlDoc.querySelector(`input[number="${this.powerPointInput}"]`);
-                    if (input) {
-                        const title = input.getAttribute('title') || '';
-                        const slideMatch = title.match(/Slide\s*(\d+)/i);
-                        // Get total slides from PowerPoint input
-                        const powerPointInput = xmlDoc.querySelector('input[type="PowerPoint"]');
-                        const totalSlides = powerPointInput ? '10' : '0';
-
-                        if (slideMatch) {
-                            const currentSlide = slideMatch[1];
-                            this.slideInfo.textContent = `Slide ${currentSlide} of ${totalSlides}`;
-                        } else {
-                            this.slideInfo.textContent = title;
-                        }
-                        
-                        console.log('PowerPoint info:', {
-                            title,
-                            currentSlide: slideMatch ? slideMatch[1] : 'unknown',
-                            totalSlides
-                        });
+                    if (slideMatch) {
+                        const currentSlide = slideMatch[1];
+                        this.slideInfo.textContent = `Slide ${currentSlide} of ${totalSlides}`;
+                    } else {
+                        this.slideInfo.textContent = title;
                     }
-                } catch (error) {
-                    console.error('Error updating slide info:', error);
                 }
             }
 
             async nextSlide() {
-                if (!this.powerPointInput) return;
+                if (!this.powerPointInput || !this.ws || this.ws.readyState !== WebSocket.OPEN) return;
                 try {
-                    const proxyUrl = 'https://cors-anywhere.herokuapp.com/';
-                    const response = await fetch(proxyUrl + `${this.vmixHost}/api/?Function=NextItem&Input=${this.powerPointInput}`, {
-                        headers: {
-                            'Origin': window.location.origin,
-                            'X-Requested-With': 'XMLHttpRequest'
-                        }
-                    });
-                    
+                    this.ws.send(`FUNCTION NextItem Input=${this.powerPointInput}`);
                     console.log('Next slide command sent');
-                    await this.updateSlideInfo();
                 } catch (error) {
                     console.error('Error advancing slide:', error);
                 }
             }
 
             async previousSlide() {
-                if (!this.powerPointInput) return;
+                if (!this.powerPointInput || !this.ws || this.ws.readyState !== WebSocket.OPEN) return;
                 try {
-                    const proxyUrl = 'https://cors-anywhere.herokuapp.com/';
-                    const response = await fetch(proxyUrl + `${this.vmixHost}/api/?Function=PreviousItem&Input=${this.powerPointInput}`, {
-                        headers: {
-                            'Origin': window.location.origin,
-                            'X-Requested-With': 'XMLHttpRequest'
-                        }
-                    });
-                    
+                    this.ws.send(`FUNCTION PreviousItem Input=${this.powerPointInput}`);
                     console.log('Previous slide command sent');
-                    await this.updateSlideInfo();
                 } catch (error) {
                     console.error('Error going back one slide:', error);
                 }
+            }
+
+            startPolling() {
+                // With WebSocket we don't need polling as we get real-time updates
+                if (this.pollInterval) {
+                    clearInterval(this.pollInterval);
+                    this.pollInterval = null;
+                }
+            }
+
+            initializeEventListeners() {
+                this.prevButton.addEventListener('click', () => this.previousSlide());
+                this.nextButton.addEventListener('click', () => this.nextSlide());
             }
 
             async setupRemoteAccess() {
@@ -778,33 +763,30 @@
                             <ol>
                                 <li>Access your router's admin panel (usually http://192.168.1.1)</li>
                                 <li>Find "Port Forwarding" settings</li>
-                                <li>Add a new rule:
+                                <li>Add these rules:
                                     <ul>
-                                        <li>External Port: 8088</li>
-                                        <li>Internal Port: 8088</li>
-                                        <li>Protocol: TCP</li>
-                                        <li>Internal IP: ${this.vmixHost?.split(':')[1].slice(2)}</li>
+                                        <li>vMix API: Port 8088 (TCP)</li>
+                                        <li>vMix WebSocket: Port 8088 (TCP/UDP)</li>
+                                        <li>vMix Call: Ports 8099-8100 (TCP/UDP)</li>
                                     </ul>
                                 </li>
                             </ol>
                         </div>
                         <div style="margin: 15px 0;">
-                            <h4>2. Firewall Settings</h4>
+                            <h4>2. vMix Settings</h4>
                             <ol>
-                                <li>Open Windows Defender Firewall</li>
-                                <li>Click "Allow an app through firewall"</li>
-                                <li>Find vMix in the list or add it manually</li>
-                                <li>Ensure both Private and Public networks are checked</li>
+                                <li>Open vMix Settings</li>
+                                <li>Go to "Web Controller"</li>
+                                <li>Enable "Allow External Connections"</li>
+                                <li>Enable "Web Socket API"</li>
                             </ol>
                         </div>
                         <div style="margin: 15px 0;">
                             <h4>3. Share Connection Details</h4>
-                            <p>Send these details to remote users:</p>
-                            <ul>
-                                <li>Public IP: ${this.publicIp}</li>
-                                <li>Port: 8088</li>
-                                <li>Their unique vMix Call link (from the links dialog)</li>
-                            </ul>
+                            <p>Send this link to your guests:</p>
+                            <code style="background: #333; padding: 5px;">
+                                https://coinkoios.github.io/vmix-controller/?Key=${this.callKey}&Name=[GuestName]&Role=guest&ProducerIP=${this.publicIp}
+                            </code>
                         </div>
                         <button onclick="this.parentElement.parentElement.remove()">Close Guide</button>
                     </div>
